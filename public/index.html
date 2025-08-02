@@ -216,8 +216,8 @@
             <h2 class="text-2xl font-bold mb-4">Global Options</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div>
-                    <label class="block text-sm font-medium mb-1">Default Stub</label>
-                    <input id="global-stub" type="text" class="input" value="pshID">
+                    <label class="block text-sm font-medium mb-1">Default Stub (Optional)</label>
+                    <input id="global-stub" type="text" class="input" placeholder="(none)">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Default Randomness Length</label>
@@ -252,7 +252,7 @@
                                            disabled>
                                     <span class="lock-icon"></span>
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">Leave empty to generate a legacy ID.</p>
+                                <p class="text-xs text-gray-500 mt-1">Provide a stub to create a delimited ID.</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium mb-1">Local Length Override</label>
@@ -290,7 +290,7 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium mb-1">Data to Hash (JSON)</label>
+                                <label class="block text-sm font-medium mb-1">Data to Hash (any text)</label>
                                 <textarea class="input local-hash-data"
                                           rows="2">{ "user": "jane", "id": 123 }</textarea>
                             </div>
@@ -339,7 +339,7 @@
                         <div class="space-y-4 mt-2">
                             <label class="block text-sm font-medium mb-1">ID to Decode</label>
                             <input id="decode-id-input" type="text" class="input" placeholder="Paste a pushID here">
-                            <button id="test-decode" class="btn btn-primary w-full">Decode ID</button>
+                            <button id="test-decode" class="btn btn-primary w-full">Decode ID (tryDecodeID)</button>
                         </div>
                         <pre id="pushid-decode-output" class="output mt-4 flex-grow">Enter an ID and click Decode.</pre>
                     </section>
@@ -405,8 +405,8 @@
                         <input id="debug-eid" type="text" class="input" placeholder="Paste eID">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1">Index ID (idxID)</label>
-                        <input id="debug-idxid" type="text" class="input" placeholder="e.g., 1-1">
+                        <label class="block text-sm font-medium mb-1">Sequence ID (seqID)</label>
+                        <input id="debug-seqid" type="text" class="input" placeholder="e.g., 1-1">
                     </div>
                 </div>
                 <div id="debugger-state-card" class="card bg-gray-50 mt-4">
@@ -417,7 +417,7 @@
 
             <section class="card">
                 <h2 class="text-2xl font-bold mb-4 border-b pb-2">Session Simulator</h2>
-                <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-1">Session Timeout</label>
                         <div class="flex gap-2">
@@ -427,6 +427,13 @@
                                 <option value="minutes" selected>Minutes</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="flex items-end">
+                        <label for="session-use-stubs" class="toggle-label text-sm font-medium">
+                            Add Stubs to Session IDs
+                            <input type="checkbox" id="session-use-stubs" class="toggle-checkbox">
+                            <div class="toggle-switch ml-2"></div>
+                        </label>
                     </div>
                 </div>
 
@@ -493,7 +500,7 @@
                         <thead>
                         <tr>
                             <th>Timestamp</th>
-                            <th>idxID</th>
+                            <th>seqID</th>
                             <th>cID</th>
                             <th>sID</th>
                             <th>eID</th>
@@ -511,282 +518,11 @@
     </main>
 </div>
 
-<!-- Library Code -->
-<script>
-    /**
-     * ===================================================================
-     * pushID Library (v3.5.0)
-     * ===================================================================
-     */
-    const pushID = (function () {
-        const PUSH_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~';
-        const CHARS_MAP = {};
-        for (let i = 0; i < PUSH_CHARS.length; i++) CHARS_MAP[PUSH_CHARS[i]] = i;
-        let lastIdObj = null;
-
-        function _generateObject(options = {}) {
-            const {time, stub = 'pshID', length = 12} = options;
-            const randLength = Math.max(12, length);
-            let now;
-            if (time instanceof Date) now = time.getTime();
-            else if (typeof time === 'number') now = time;
-            else now = Date.now();
-            const timeChars = new Array(8);
-            let timestampNow = now;
-            for (let i = 7; i >= 0; i--) {
-                timeChars[i] = PUSH_CHARS.charAt(timestampNow % 64);
-                timestampNow = Math.floor(timestampNow / 64);
-            }
-            const timeStr = timeChars.join('');
-            let randStr;
-            if (typeof options.randomness === 'string') randStr = options.randomness;
-            else if (options.data !== undefined) randStr = publicApi.hash(options.data, randLength);
-            else randStr = publicApi.newRnd(randLength);
-            const useDelimitedFormat = stub && typeof stub === 'string';
-            const newObj = {
-                id: useDelimitedFormat ? `${timeStr}-${stub}-${randStr}` : `${timeStr}${randStr}`,
-                randomness: randStr,
-                date: new Date(now),
-                stub: useDelimitedFormat ? stub : null
-            };
-            lastIdObj = newObj;
-            return newObj;
-        }
-
-        function _serialize(val) {
-            if (val === null || val === undefined) return 'null';
-            if (typeof val !== 'object') return JSON.stringify(val);
-            if (Array.isArray(val)) return '[' + val.map(_serialize).join(',') + ']';
-            return '{' + Object.keys(val).sort().map(key => JSON.stringify(key) + ':' + _serialize(val[key])).join(',') + '}';
-        }
-
-        function decodeObj(id) {
-            if (typeof id !== 'string' || id.length === 0) throw new TypeError('Invalid Push ID provided.');
-            const parts = id.split('-');
-            if (parts.length === 3) {
-                const [timeStr, stub, randStr] = parts;
-                const timestamp = decodeTime(timeStr);
-                return {id, randomness: randStr, date: new Date(timestamp), stub, encodedTime: timeStr};
-            } else {
-                if (id.length < 8) throw new Error('Invalid legacy Push ID format.');
-                const timeStr = id.substring(0, 8);
-                const randStr = id.substring(8);
-                const timestamp = decodeTime(timeStr);
-                return {id, randomness: randStr, date: new Date(timestamp), stub: null, encodedTime: timeStr};
-            }
-        }
-
-        function decodeTime(timeStr) {
-            let timestamp = 0;
-            for (let i = 0; i < timeStr.length; i++) {
-                const charValue = CHARS_MAP[timeStr[i]];
-                if (charValue === undefined) throw new Error('Invalid Push ID character: ' + timeStr[i]);
-                timestamp = timestamp * 64 + charValue;
-            }
-            return timestamp;
-        }
-
-        const publicApi = {
-            newID: (options) => _generateObject(options).id, newObj: (options) => _generateObject(options),
-            previousID: () => lastIdObj ? lastIdObj.id : null, previousObj: () => lastIdObj,
-            newTime: () => Date.now(), newDate: () => new Date(),
-            newRnd: (length = 12) => {
-                const len = Math.max(12, length);
-                const chars = new Array(len);
-                for (let i = 0; i < len; i++) chars[i] = PUSH_CHARS.charAt(Math.floor(Math.random() * 64));
-                return chars.join('');
-            },
-            hash: (input, length = 12) => {
-                const len = Math.max(12, length);
-                const serialized = _serialize(input);
-                let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
-                for (let i = 0, k; i < serialized.length; i++) {
-                    k = serialized.charCodeAt(i);
-                    h1 = h2 ^ Math.imul(h1, 597399067);
-                    h2 = h3 ^ Math.imul(h2, 2869860233);
-                    h3 = h4 ^ Math.imul(h3, 951274213);
-                    h4 = h1 ^ Math.imul(h4, 2716044179);
-                    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-                    h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-                    h3 = Math.imul(h3 ^ (h3 >>> 16), 2246822507);
-                    h4 = Math.imul(h4 ^ (h4 >>> 13), 3266489909);
-                    h1 = (h1 ^ k) >>> 0;
-                }
-                const hashChars = new Array(len);
-                for (let i = 0; i < len; i++) {
-                    const state = [h1, h2, h3, h4];
-                    const charIndex = (state[i % 4] >> ((i % 5) * 3)) & 63;
-                    hashChars[i] = PUSH_CHARS.charAt(charIndex);
-                }
-                return hashChars.join('');
-            },
-            newHashID: (options = {}) => publicApi.newID(options),
-            decodeID: (id) => decodeObj(id), decodeTime: (id) => decodeObj(id).date.getTime(),
-            decodeDate: (id) => decodeObj(id).date, decodeStr: (id) => decodeObj(id).randomness,
-            decodeStub: (id) => decodeObj(id).stub,
-        };
-        publicApi.next = publicApi.newID;
-        publicApi.nextID = publicApi.newID;
-        publicApi.nextObj = publicApi.newObj;
-        publicApi.previous = publicApi.previousID;
-        publicApi.prevObj = publicApi.previousObj;
-        publicApi.nextHashID = publicApi.newHashID;
-        publicApi.prevHashID = publicApi.previousID;
-        return publicApi;
-    })();
-
-    /**
-     * ===================================================================
-     * sessionManager Library (v4.5.0 with idxID)
-     * ===================================================================
-     */
-    const sessionManager = (config = {}) => {
-        const finalConfig = {
-            sessionTimeout: 30 * 60 * 1000, randomnessLength: 12, cookiePrefix: '__psh_',
-            cookieOptions: {path: '/', secure: false, sameSite: 'Lax'}, ...config,
-        };
-
-        const storageHandler = {
-            _isCookieEnabled: null,
-            _checkCookieEnabled() {
-                if (this._isCookieEnabled !== null) return this._isCookieEnabled;
-                try {
-                    document.cookie = "testcookie=1; SameSite=Lax";
-                    const enabled = document.cookie.indexOf("testcookie") !== -1;
-                    document.cookie = "testcookie=1; expires=Thu, 01-Jan-1970 00:00:01 GMT; SameSite=Lax";
-                    this._isCookieEnabled = enabled;
-                    return enabled;
-                } catch (e) {
-                    this._isCookieEnabled = false;
-                    return false;
-                }
-            },
-            get(key) {
-                const name = finalConfig.cookiePrefix + key;
-                if (this._checkCookieEnabled()) {
-                    const match = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]+)'));
-                    return match ? decodeURIComponent(match[2]) : null;
-                } else if (typeof localStorage !== 'undefined') {
-                    const item = localStorage.getItem(name);
-                    if (!item) return null;
-                    try {
-                        const {value, expires} = JSON.parse(item);
-                        if (expires && Date.now() > expires) {
-                            localStorage.removeItem(name);
-                            return null;
-                        }
-                        return value;
-                    } catch (e) {
-                        return null;
-                    }
-                }
-                return null;
-            },
-            set(key, value, cookieOpts) {
-                const name = finalConfig.cookiePrefix + key;
-                if (this._checkCookieEnabled()) {
-                    let cookieString = `${name}=${encodeURIComponent(value)}`;
-                    for (const optKey in cookieOpts) {
-                        const optValue = cookieOpts[optKey];
-                        if (optValue instanceof Date) cookieString += `; ${optKey}=${optValue.toUTCString()}`;
-                        else cookieString += `; ${optKey}=${optValue}`;
-                    }
-                    document.cookie = cookieString;
-                } else if (typeof localStorage !== 'undefined') {
-                    const expires = cookieOpts.expires ? new Date(cookieOpts.expires).getTime() : null;
-                    localStorage.setItem(name, JSON.stringify({value, expires}));
-                }
-            },
-            clear() {
-                const keys = ['cID', 'sID', 'eID', 'idxID'];
-                keys.forEach(key => {
-                    const name = finalConfig.cookiePrefix + key;
-                    if (this._checkCookieEnabled()) {
-                        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-                    }
-                    if (typeof localStorage !== 'undefined') {
-                        localStorage.removeItem(name);
-                    }
-                });
-            }
-        };
-
-        const process = (options = {}) => {
-            const cID = storageHandler.get('cID');
-            const sID = storageHandler.get('sID');
-            const prevEID = storageHandler.get('eID');
-            const idxID = storageHandler.get('idxID');
-
-            const oldState = {
-                cID, sID, eID: prevEID, idxID,
-                clientTime: cID ? new Date(pushID.decodeTime(cID)) : null,
-                sessionTime: sID ? new Date(pushID.decodeTime(sID)) : null,
-                eventTime: prevEID ? new Date(pushID.decodeTime(prevEID)) : null
-            };
-
-            let isSessionExpired = true;
-            const lastActivityID = prevEID || sID || cID;
-            if (lastActivityID) {
-                try {
-                    const lastActivityTime = pushID.decodeTime(lastActivityID);
-                    isSessionExpired = (Date.now() - lastActivityTime) > finalConfig.sessionTimeout;
-                } catch (e) {
-                    isSessionExpired = true;
-                }
-            }
-
-            const idOptions = {length: finalConfig.randomnessLength};
-            const newEID = pushID.newID({...idOptions, stub: 'eID'});
-
-            const isNewClient = !cID;
-            const isNewSession = !sID || isSessionExpired;
-
-            const finalCID = cID || pushID.newID({...idOptions, stub: 'cID'});
-            const finalSID = isNewSession ? pushID.newID({...idOptions, stub: 'sID'}) : sID;
-
-            let sessionNum = 1;
-            let sessionEventNum = 1;
-            if (idxID && !isNewSession) {
-                const parts = idxID.split('-').map(Number);
-                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                    sessionNum = parts[0];
-                    sessionEventNum = parts[1] + 1;
-                }
-            } else if (idxID && isNewSession) {
-                const parts = idxID.split('-').map(Number);
-                if (parts.length === 2 && !isNaN(parts[0])) {
-                    sessionNum = parts[0] + 1;
-                }
-            }
-            const finalIdxID = `${sessionNum}-${sessionEventNum}`;
-
-            const newState = {
-                cID: finalCID, sID: finalSID, eID: newEID, idxID: finalIdxID,
-                clientTime: new Date(pushID.decodeTime(finalCID)),
-                sessionTime: new Date(pushID.decodeTime(finalSID)),
-                eventTime: new Date(pushID.decodeTime(newEID))
-            };
-
-            const changes = {isNewClient, isNewSession};
-
-            const cIDExpiry = new Date();
-            cIDExpiry.setFullYear(cIDExpiry.getFullYear() + 2);
-            storageHandler.set('cID', newState.cID, {...finalConfig.cookieOptions, expires: cIDExpiry});
-            const sessionExpiry = new Date(Date.now() + finalConfig.sessionTimeout);
-            const sessionCookieOptions = {...finalConfig.cookieOptions, expires: sessionExpiry};
-            storageHandler.set('sID', newState.sID, sessionCookieOptions);
-            storageHandler.set('eID', newState.eID, sessionCookieOptions);
-            storageHandler.set('idxID', newState.idxID, sessionCookieOptions);
-
-            return {...newState, newState, oldState, changes};
-        };
-
-        return {process, clear: storageHandler.clear.bind(storageHandler), storageHandler, config: finalConfig};
-    };
-</script>
 
 <!-- Application Logic -->
 <script>
+    export {sessionManager, pushID} from './sessionManager.js'
+
     document.addEventListener('DOMContentLoaded', () => {
         let manager;
         let idHistory = [];
@@ -861,7 +597,7 @@
         function getGlobalOptions() {
             const options = {};
             const stub = globalStubInput.value.trim();
-            if (stub) options.stub = stub;
+            if (stub) options.stub = stub; else options.stub = null;
             const length = parseInt(globalLengthInput.value, 10);
             if (!isNaN(length)) options.length = length;
             if (!useCurrentTimeToggle.checked) {
@@ -898,8 +634,12 @@
 
         function updateDecodedOutput(card, id) {
             try {
-                const decoded = pushID.decodeID(id);
+                const decoded = pushID.tryDecodeID(id);
                 const container = card.querySelector('.decoded-output');
+                if (!decoded) {
+                    container.innerHTML = '<strong>Invalid ID</strong>';
+                    return;
+                }
                 container.innerHTML = `
                         <strong>Time:</strong> ${formatDate(decoded.date)}<br>
                         <strong>Randomness:</strong> ${decoded.randomness}<br>
@@ -910,7 +650,8 @@
         }
 
         function updateIdHistory(id) {
-            const decoded = pushID.decodeID(id);
+            const decoded = pushID.tryDecodeID(id);
+            if (!decoded) return;
             idHistory.unshift({
                 id: decoded.id,
                 timestamp: decoded.date,
@@ -985,15 +726,16 @@
             btn.addEventListener('click', () => {
                 const card = btn.closest('.card');
                 const options = getLocalOptions(card);
+                let data;
                 try {
-                    const data = JSON.parse(card.querySelector('.local-hash-data').value);
-                    const result = pushID.hash(data, options.length);
-                    card.querySelector('.hash-output').textContent = result;
-                    card.querySelector('.id-output').textContent = 'N/A';
-                    card.querySelector('.decoded-output').innerHTML = '';
+                    data = JSON.parse(card.querySelector('.local-hash-data').value);
                 } catch (e) {
-                    card.querySelector('.hash-output').textContent = `Error: ${e.message}`;
+                    data = card.querySelector('.local-hash-data').value;
                 }
+                const result = pushID.hash(data, options.length);
+                card.querySelector('.hash-output').textContent = result;
+                card.querySelector('.id-output').textContent = 'N/A';
+                card.querySelector('.decoded-output').innerHTML = '';
             });
         });
 
@@ -1001,17 +743,18 @@
             btn.addEventListener('click', () => {
                 const card = btn.closest('.card');
                 const options = getLocalOptions(card);
+                let data;
                 try {
-                    const data = JSON.parse(card.querySelector('.local-hash-data').value);
-                    options.data = data;
-                    const result = pushID.newHashID(options);
-                    card.querySelector('.id-output').textContent = result;
-                    updateDecodedOutput(card, result);
-                    triggerDecode(result);
-                    updateIdHistory(result);
+                    data = JSON.parse(card.querySelector('.local-hash-data').value);
                 } catch (e) {
-                    card.querySelector('.id-output').textContent = `Error: ${e.message}`;
+                    data = card.querySelector('.local-hash-data').value;
                 }
+                options.data = data;
+                const result = pushID.newHashID(options);
+                card.querySelector('.id-output').textContent = result;
+                updateDecodedOutput(card, result);
+                triggerDecode(result);
+                updateIdHistory(result);
             });
         });
 
@@ -1021,11 +764,11 @@
                 decodeOutput.textContent = 'Please enter an ID to decode.';
                 return;
             }
-            try {
-                const result = pushID.decodeID(id);
+            const result = pushID.tryDecodeID(id);
+            if (result) {
                 decodeOutput.textContent = JSON.stringify(result, null, 2);
-            } catch (e) {
-                decodeOutput.textContent = `Error: ${e.message}`;
+            } else {
+                decodeOutput.textContent = `Error: Invalid pushID format.`;
             }
         });
 
@@ -1041,7 +784,8 @@
             const timeoutValue = parseInt(document.getElementById('session-timeout-value').value, 10) || 30;
             const timeoutUnit = document.getElementById('session-timeout-unit').value;
             const sessionTimeout = timeoutUnit === 'seconds' ? timeoutValue * 1000 : timeoutValue * 60 * 1000;
-            manager = sessionManager({sessionTimeout});
+            const useStubs = document.getElementById('session-use-stubs').checked;
+            manager = sessionManager({sessionTimeout, useStubs});
         }
 
         function updateStorageDisplay() {
@@ -1081,7 +825,7 @@
                 return `
                     <tr>
                         <td data-sort-value="${eIDDecoded.date.getTime()}">${formatDate(eIDDecoded.date)}</td>
-                        <td>${event.idxID}</td>
+                        <td>${event.seqID}</td>
                         <td>${event.cID}</td>
                         <td>${event.sID}</td>
                         <td>${event.eID}</td>
@@ -1092,7 +836,7 @@
 
         function updateLiveStateDisplay(state, isManualUpdate = false) {
             clearInterval(liveStateInterval);
-            const lastActivityTime = pushID.decodeTime(state.eID || state.sID || state.cID);
+            const lastActivityTime = (state.eID && pushID.decodeTime(state.eID)) || (state.sID && pushID.decodeTime(state.sID)) || (state.cID && pushID.decodeTime(state.cID));
 
             const render = () => {
                 const now = Date.now();
@@ -1115,9 +859,9 @@
                             ${createLiveStateField('cID', state.cID, now, 'New Client', 'session-new-client', 'btn-secondary')}
                             ${createLiveStateField('sID', state.sID, now, 'New Session', 'session-new', 'btn-primary')}
                             ${createLiveStateField('eID', state.eID, now, 'Track Event', 'session-event', 'btn-primary')}
-                            <div class="flex flex-col items-center">
-                                <p class="text-sm font-medium text-gray-500">idxID</p>
-                                <p class="text-2xl font-mono mt-2">${state.idxID}</p>
+                             <div class="flex flex-col items-center">
+                                <p class="text-sm font-medium text-gray-500">seqID</p>
+                                <p class="text-2xl font-mono mt-2">${state.seqID}</p>
                             </div>
                         </div>
                     `;
@@ -1165,7 +909,7 @@
             updateLiveStateDisplay(result.newState);
         }
 
-        document.querySelectorAll('#session-timeout-value, #session-timeout-unit').forEach(el => {
+        document.querySelectorAll('#session-timeout-value, #session-timeout-unit, #session-use-stubs').forEach(el => {
             el.addEventListener('change', () => {
                 if (sessionEventHistory.length > 0) {
                     initializeManager();
@@ -1192,23 +936,23 @@
             const cID = document.getElementById('debug-cid').value.trim();
             const sID = document.getElementById('debug-sid').value.trim();
             const eID = document.getElementById('debug-eid').value.trim();
-            const idxID = document.getElementById('debug-idxid').value.trim();
+            const seqID = document.getElementById('debug-seqid').value.trim();
 
-            if (!cID && !sID && !eID && !idxID) {
+            if (!cID && !sID && !eID && !seqID) {
                 debuggerStateCard.innerHTML = '<p class="text-center text-gray-500">Enter IDs to see their state.</p>';
                 return;
             }
 
             let content = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">';
             [{id: cID, name: 'cID'}, {id: sID, name: 'sID'}, {id: eID, name: 'eID'}, {
-                id: idxID,
-                name: 'idxID'
+                id: seqID,
+                name: 'seqID'
             }].forEach(({id, name}) => {
                 content += '<div>';
                 content += `<p class="text-sm font-medium text-gray-500">${name}</p>`;
                 if (id) {
                     try {
-                        if (name !== 'idxID') {
+                        if (name !== 'seqID') {
                             const decoded = pushID.decodeID(id);
                             const elapsed = Math.floor((Date.now() - decoded.date.getTime()) / 1000);
                             content += `<p class="text-xs font-mono break-all">${id}</p>`;
@@ -1229,7 +973,7 @@
             debuggerStateCard.innerHTML = content;
         }
 
-        ['debug-cid', 'debug-sid', 'debug-eid', 'debug-idxid'].forEach(id => {
+        ['debug-cid', 'debug-sid', 'debug-eid', 'debug-seqid'].forEach(id => {
             document.getElementById(id).addEventListener('input', updateDebuggerState);
         });
 
@@ -1241,16 +985,16 @@
             const cID = document.getElementById('debug-cid').value.trim();
             const sID = document.getElementById('debug-sid').value.trim();
             const eID = document.getElementById('debug-eid').value.trim();
-            const idxID = document.getElementById('debug-idxid').value.trim();
+            const seqID = document.getElementById('debug-seqid').value.trim();
 
             if (eID) updateIdHistory(eID);
 
-            const newState = {cID, sID, eID, idxID};
+            const newState = {cID, sID, eID, seqID};
 
             if (cID) manager.storageHandler.set('cID', cID, {expires: new Date(new Date().setFullYear(new Date().getFullYear() + 2))});
             if (sID) manager.storageHandler.set('sID', sID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
             if (eID) manager.storageHandler.set('eID', eID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
-            if (idxID) manager.storageHandler.set('idxID', idxID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
+            if (seqID) manager.storageHandler.set('seqID', seqID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
 
             sessionEventHistory.unshift(newState);
             renderSessionHistoryTable();
@@ -1285,8 +1029,8 @@
                                 <p class="text-lg font-mono break-all">${decoded.randomness}</p>
                                 <p class="text-xs text-gray-600 mt-1">Length: ${decoded.randomness.length} (${decoded.randomness.length * 6} bits of entropy)</p>
                                 <p class="text-sm font-semibold mt-1">${probability}</p>
-                                <p class="text-xs text-gray-500">i.e., 1 in ${formatted.full} (${formatted.name})</p>
                                 <button id="regenerate-randomness" class="btn btn-primary mt-4 w-full">Regenerate Randomness</button>
+                                <p class="text-xs text-gray-500 mt-2">i.e., 1 in ${formatted.full} (${formatted.name})</p>
                             </div>
                             <div class="text-center">
                                 <p class="text-sm font-medium text-gray-500">Stub</p>
@@ -1351,7 +1095,7 @@
             document.getElementById('debug-cid').value = cID;
             document.getElementById('debug-sid').value = sID;
             document.getElementById('debug-eid').value = eID;
-            document.getElementById('debug-idxid').value = '1-1';
+            document.getElementById('debug-seqid').value = '1-1';
             updateDebuggerState();
         }
 
