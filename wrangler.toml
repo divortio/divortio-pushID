@@ -1,0 +1,14 @@
+# The name of your Cloudflare Worker.
+name = "session-manager-worker"
+
+# The entry point for your worker.
+main = "src/index.mjs"
+
+# The compatibility date ensures your worker uses a specific version of the Workers runtime.
+compatibility_date = "2025-05-01"
+
+# Define the Durable Object binding.
+# This makes the "SessionManagerDO" class available to your worker code.
+[[durable_objects.bindings]]
+name = "SESSION_MANAGER_DO" # How you will access the binding in your code (env.SESSION_MANAGER_DO)
+class_name = "SessionManagerDO" # The name of the exported class in your Durable Object file

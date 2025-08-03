@@ -191,7 +191,6 @@
 
     <main class="flex flex-col gap-12">
 
-        <!-- Hero Section -->
         <section class="card w-full text-center">
             <h2 class="text-xl font-semibold text-gray-700">Your pushID is:</h2>
             <p id="hero-id-output" class="text-2xl font-mono my-4 p-4 bg-gray-50 rounded-lg break-all"></p>
@@ -202,16 +201,13 @@
             </div>
         </section>
 
-        <!-- Decoded Hero Section -->
         <section class="card w-full">
             <h2 class="text-2xl font-bold mb-4">Decoded pushID</h2>
             <div id="decoded-hero-content" class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                <!-- Content will be injected by JS -->
             </div>
             <p id="collision-info" class="text-center text-sm text-gray-500 mt-4"></p>
         </section>
 
-        <!-- Global Options Section -->
         <section class="card w-full" id="pushid-tester">
             <h2 class="text-2xl font-bold mb-4">Global Options</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -236,11 +232,9 @@
             </div>
         </section>
 
-        <!-- pushID Tester Section -->
         <div class="w-full">
             <h2 class="text-2xl font-bold mb-4">pushID Library Tester</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Column 1 -->
                 <div class="flex flex-col gap-8">
                     <section class="card" data-card-name="newID">
                         <h3 class="text-xl font-semibold">Generate newID (string)</h3>
@@ -306,7 +300,6 @@
                         <div class="decoded-output"></div>
                     </section>
                 </div>
-                <!-- Column 2 -->
                 <div class="flex flex-col gap-8">
                     <section class="card" data-card-name="newObj">
                         <h3 class="text-xl font-semibold">Generate newObj (object)</h3>
@@ -347,7 +340,6 @@
             </div>
         </div>
 
-        <!-- Generated ID History Table -->
         <div class="w-full mt-8">
             <section class="card">
                 <div class="flex justify-between items-center mb-4">
@@ -386,9 +378,7 @@
         </div>
 
 
-        <!-- sessionManager Sections -->
         <div class="w-full mt-8" id="session-simulator">
-            <!-- Session Debugger -->
             <section class="card mb-8">
                 <h2 class="text-2xl font-bold mb-4 border-b pb-2">Session Debugger</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -519,12 +509,14 @@
 </div>
 
 
-<!-- Application Logic -->
-<script>
-    export {sessionManager, pushID} from './sessionManager.js'
+<script type="module">
+    import {pushID} from './pushID.js';
+    import {sessionManager} from './sessionManager.js';
+    import {clientStorage} from './clientSession.js';
 
     document.addEventListener('DOMContentLoaded', () => {
         let manager;
+        let storage;
         let idHistory = [];
         let sessionEventHistory = [];
         let liveStateInterval;
@@ -785,12 +777,14 @@
             const timeoutUnit = document.getElementById('session-timeout-unit').value;
             const sessionTimeout = timeoutUnit === 'seconds' ? timeoutValue * 1000 : timeoutValue * 60 * 1000;
             const useStubs = document.getElementById('session-use-stubs').checked;
+
             manager = sessionManager({sessionTimeout, useStubs});
+            storage = clientStorage({cookiePrefix: '__psh_'});
         }
 
         function updateStorageDisplay() {
-            if (!manager) return;
-            const prefix = manager.config.cookiePrefix;
+            if (!storage) return;
+            const prefix = storage.config.cookiePrefix;
 
             const cookies = document.cookie.split(';').filter(c => c.trim().startsWith(prefix));
             if (cookies.length > 0) {
@@ -871,8 +865,8 @@
                 liveStateCard.querySelector('#session-new').addEventListener('click', () => processEvent(true));
                 liveStateCard.querySelector('#session-event').addEventListener('click', () => processEvent(false));
                 liveStateCard.querySelector('#session-clear-storage').addEventListener('click', () => {
-                    if (!manager) initializeManager();
-                    manager.clear();
+                    if (!storage) initializeManager();
+                    storage.clear();
                     updateStorageDisplay();
                 });
             };
@@ -898,10 +892,10 @@
         function processEvent(isNewSession = false) {
             initializeManager();
             if (isNewSession) {
-                manager.storageHandler.set('sID', '', {expires: new Date(0)});
-                manager.storageHandler.set('eID', '', {expires: new Date(0)});
+                storage.set('sID', '', {expires: new Date(0)});
+                storage.set('eID', '', {expires: new Date(0)});
             }
-            const result = manager.process();
+            const result = manager.process({storageHandler: storage});
             sessionEventHistory.unshift(result.newState);
             updateIdHistory(result.newState.eID);
             renderSessionHistoryTable();
@@ -919,8 +913,8 @@
         });
 
         function handleNewClient() {
-            if (!manager) initializeManager();
-            manager.clear();
+            if (!storage) initializeManager();
+            storage.clear();
             updateStorageDisplay();
             processEvent(true);
         }
@@ -979,8 +973,8 @@
 
         document.getElementById('debugger-simulate').addEventListener('click', () => {
             updateDebuggerState();
-            if (!manager) initializeManager();
-            manager.clear();
+            if (!storage) initializeManager();
+            storage.clear();
 
             const cID = document.getElementById('debug-cid').value.trim();
             const sID = document.getElementById('debug-sid').value.trim();
@@ -991,10 +985,10 @@
 
             const newState = {cID, sID, eID, seqID};
 
-            if (cID) manager.storageHandler.set('cID', cID, {expires: new Date(new Date().setFullYear(new Date().getFullYear() + 2))});
-            if (sID) manager.storageHandler.set('sID', sID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
-            if (eID) manager.storageHandler.set('eID', eID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
-            if (seqID) manager.storageHandler.set('seqID', seqID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
+            if (cID) storage.set('cID', cID, {expires: new Date(new Date().setFullYear(new Date().getFullYear() + 2))});
+            if (sID) storage.set('sID', sID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
+            if (eID) storage.set('eID', eID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
+            if (seqID) storage.set('seqID', seqID, {expires: new Date(Date.now() + manager.config.sessionTimeout)});
 
             sessionEventHistory.unshift(newState);
             renderSessionHistoryTable();
