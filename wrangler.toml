@@ -1,4 +1,4 @@
-name = "divortio-pushID"
+name = "divortio-pushid"
 main = "src/index.mjs"
 compatibility_date = "2025-08-15"
 compatibility_flags = ["nodejs_compat", "nodejs_als"]
