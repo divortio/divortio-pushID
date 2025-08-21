@@ -12,6 +12,8 @@
  * It is NOT suitable for cryptographic purposes like password hashing.
  */
 
+import serialize from './serial.js';
+
 /**
  * Creates a stable, deterministic hash string from any JavaScript input.
  *
@@ -45,7 +47,10 @@
  * const arrHash = hashIsh([1, "test", true], 12, PUSH_CHARS);
  * // -> e.g., "zYxWvUtSrQpOnM"
  */
-export const hashIsh = (function () {
+const hashIsh = (function () {
+    // Default character set is now defined within the library's scope.
+    const DEFAULT_PUSH_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~';
+
     /**
      * Deterministically serializes any JavaScript value to a string for hashing.
      * Ensures that object keys are sorted to produce a stable, consistent output.
@@ -53,13 +58,6 @@ export const hashIsh = (function () {
      * @param {*} val - The value to serialize (string, number, object, array, etc.).
      * @returns {string} A stable, stringified representation of the value.
      */
-    function _serialize(val) {
-        if (val === null || val === undefined) return 'null';
-        if (typeof val !== 'object') return JSON.stringify(val);
-        if (Array.isArray(val)) return '[' + val.map(_serialize).join(',') + ']';
-        // Sort object keys for a deterministic output
-        return '{' + Object.keys(val).sort().map(key => JSON.stringify(key) + ':' + _serialize(val[key])).join(',') + '}';
-    }
 
     /**
      * The main hashing function returned by the IIFE.
@@ -69,12 +67,10 @@ export const hashIsh = (function () {
      * @param {string} PUSH_CHARS - The character set for the output string.
      * @returns {string} The resulting hash string.
      */
-    return function (input, length, PUSH_CHARS) {
-        const serialized = _serialize(input);
-        // MurmurHash3 seed values
-        let h1 = 1779033703, h2 = 3144134277,
-            h3 = 1013904242, h4 = 2773480762;
-
+    // The function now uses default parameters for length and PUSH_CHARS.
+    return function (input, length = 12, PUSH_CHARS = DEFAULT_PUSH_CHARS) {
+        const serialized = serialize(input);
+        let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
         for (let i = 0, k; i < serialized.length; i++) {
             k = serialized.charCodeAt(i);
             h1 = h2 ^ Math.imul(h1, 597399067);
@@ -87,14 +83,13 @@ export const hashIsh = (function () {
             h4 = Math.imul(h4 ^ (h4 >>> 13), 3266489909);
             h1 = (h1 ^ k) >>> 0;
         }
-
         const hashChars = new Array(length);
         for (let i = 0; i < length; i++) {
             const state = [h1, h2, h3, h4];
-            // Use the hash state to pick characters from the character set
             const charIndex = (state[i % 4] >> ((i % 5) * 3)) & 63;
             hashChars[i] = PUSH_CHARS.charAt(charIndex);
         }
         return hashChars.join('');
     }
 })();
+export default hashIsh;

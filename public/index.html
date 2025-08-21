@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>pushID & sessionManager Test Application</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./vendor/js/tailwind.js"></script>
     <style>
+        @import url('./vendor/fonts/google-fonts.css');
+
         html {
             scroll-behavior: smooth;
         }
@@ -14,7 +16,6 @@
             font-family: 'Inter', sans-serif;
         }
 
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         .output {
             background-color: #1f2937;
             color: #f9fafb;
@@ -510,9 +511,9 @@
 
 
 <script type="module">
-    import {pushID} from './pushID.js';
-    import {sessionManager} from './sessionManager.js';
-    import {clientStorage} from './clientSession.js';
+    import {pushID} from './js/pushID.js';
+    import {sessionManager} from './js/sessionManager.js';
+    import {clientStorage} from './js/clientSession.js';
 
     document.addEventListener('DOMContentLoaded', () => {
         let manager;
