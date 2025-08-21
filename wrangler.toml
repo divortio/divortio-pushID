@@ -1,17 +1,12 @@
 name = "divortio-pushID"
 main = "src/index.mjs"
 compatibility_date = "2025-08-15"
-
-# This binds the './public' directory to your Worker, making the assets
-# available via the `env.ASSETS` service binding.
-[assets]
-binding = "ASSETS"
-bucket = "./public"
-
 compatibility_flags = ["nodejs_compat", "nodejs_als"]
 
+minify = true
 workers_dev = false
 preview_urls = false
+
 
 [placement]
 mode = "smart"
@@ -20,25 +15,12 @@ mode = "smart"
 enabled = true
 head_sampling_rate = 1
 
-[minify]
-html = true
-css = true
-js = true
-
+# This binds the './public' directory to your Worker, making the assets
+# available via the `env.ASSETS` service binding.
 [assets]
 binding = "ASSETS"
 directory = "./public"
 
-routes = [
-    { pattern = "pushid.tools.divort.io", custom_domain = true }
-]
-
-[[headers]]
-for = "/*"
-[headers.values]
-"Cache-Control" = "public, max-age=300, immutable"
-
-[[headers]]
-for = "*.html"
-[headers.values]
-"Cache-Control" = "public, max-age=120, immutable"
+[[routes]]
+pattern = "pushid.tools.divort.io"
+custom_domain = true
